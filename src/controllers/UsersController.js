@@ -1,4 +1,4 @@
-const { hash } = require('bcryptjs')
+const { hash, compare } = require('bcryptjs')
 const sqliteConnection = require('../database/sqlite')
 const AppError = require('../utils/AppError')
 
@@ -25,11 +25,65 @@ class UsersController {
     return response.status(201).json()
   }
 
+  /* update - PUT para actualizar um registro */
+  async update(request, response) {
+    try {
+      const { name, email, password, old_password } = request.body;
+      const { id } = request.params;
+  
+      const database = await sqliteConnection();
+      const user = await database.get("SELECT * FROM users WHERE id = (?)", [id]);
+  
+      if (!user) {
+        throw new AppError("Usuário não encontrado!");
+      }
+  
+      const userWithUpdatedEmail = await database.get("SELECT * FROM users WHERE email = (?)", [email]);
+  
+      if (userWithUpdatedEmail && userWithUpdatedEmail.id !== user.id) {
+        throw new AppError("Este e-mail já está em uso.");
+      }
+  
+      user.name = name;
+      user.email = email;
+  
+      if (password && !old_password) {
+        throw new AppError("Você precisa informar a senha antiga para definir a nova senha.");
+      }
+  
+      if (password && old_password) {
+        const checkOldPassword = await compare(old_password, user.password);
+  
+        if (!checkOldPassword) {
+          throw new AppError("A senha antiga não confere.");
+        }
+  
+        user.password = await hash(password, 8);
+      }
+  
+      await database.run(
+        `UPDATE users SET
+          name = ?,
+          email = ?,
+          password = ?,
+          updated_at = DATETIME('now')
+        WHERE id = ?`,
+        [user.name, user.email, user.password, id]
+      );
+  
+      return response.json();
+    } catch (error) {
+      if (error instanceof AppError) {
+        return response.status(400).json({ message: error.message });
+      }
+      console.error(error); // Log do erro
+      return response.status(500).json({ message: "Erro interno do servidor" });
+    }
+  }
+  
   /* index - GET para listar varios registros */
 
   /* show - GET para listar um registro especifico */
-   
-  /* update - PUT para actualizar um registro */
 
   /* delete - DELETE remover um registro */
 }
